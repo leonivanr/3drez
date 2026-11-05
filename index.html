@@ -103,6 +103,8 @@ button:focus-visible{outline:2px solid var(--mint);outline-offset:2px}
 .brand h1{font-family:var(--font-display);font-weight:400;font-size:clamp(40px,12vw,64px);letter-spacing:.06em;margin:0;line-height:1}
 .brand h1 span{color:var(--gold)}
 .brand p{margin:0;color:var(--muted);font-size:15px;max-width:30ch;text-wrap:balance}
+.brand p.goal{margin-top:6px;display:flex;align-items:center;gap:8px;color:var(--ink);font-size:14px;font-weight:500;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:8px 14px}
+.pawn-dot{flex:none;width:12px;height:12px;border-radius:50%;background:var(--coral);box-shadow:0 0 0 2px rgba(239,106,85,.3)}
 .splash-actions{display:flex;flex-direction:column;gap:10px;width:min(260px,100%)}
 
 /* Intro */
@@ -185,6 +187,7 @@ button:focus-visible{outline:2px solid var(--mint);outline-offset:2px}
     <div class="brand">
       <h1><span>3D</span>REZ</h1>
       <p>Ajedrez sobre las seis caras de un cubo</p>
+      <p class="goal"><span class="pawn-dot"></span>Para ganar, comé a todos los peones rojos</p>
     </div>
     <div class="splash-actions">
       <button class="cta" id="bPlay" type="button">Jugar</button>
@@ -318,16 +321,18 @@ function solve(piece,start,targets,rocks){
   return -1;
 }
 
+// De la pieza más fácil a la más difícil: Reina → Torre → Alfil → Caballo
 const LEVELS=[
-  {piece:'R',k:3,r:0},{piece:'B',k:3,r:1},{piece:'N',k:3,r:0},{piece:'Q',k:4,r:3},
-  {piece:'R',k:4,r:5},{piece:'B',k:4,r:4},{piece:'N',k:4,r:3},{piece:'Q',k:5,r:7},
-  {piece:'N',k:5,r:5},{piece:'R',k:5,r:8},{piece:'B',k:5,r:6},{piece:'Q',k:6,r:9},
+  {piece:'Q',k:3,r:1},{piece:'Q',k:4,r:3},{piece:'Q',k:5,r:6},
+  {piece:'R',k:3,r:0},{piece:'R',k:4,r:4},{piece:'R',k:5,r:7},
+  {piece:'B',k:3,r:1},{piece:'B',k:4,r:4},{piece:'B',k:5,r:6},
+  {piece:'N',k:3,r:0},{piece:'N',k:4,r:3},{piece:'N',k:5,r:5},
 ];
 function mulberry(a){return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
 const levelCache={};
 function genLevel(i){
   if(levelCache[i]) return levelCache[i];
-  const L=LEVELS[i]; const minPar=L.k+(i>=3?1:0)+(i>=8?1:0);
+  const L=LEVELS[i]; const minPar=L.k+(i%3>0?1:0);
   let best=null;
   for(let a=0;a<400;a++){
     const rng=mulberry(9173+i*1301+a*7);
@@ -440,8 +445,8 @@ function makeMarker(cap){
 let G={mode:'level',li:0,level:null,piece:'R',pos:null,mask:0,moves:0,hist:[]};
 let player=null, targetMeshes=new Map(), current=new Map(), busy=false;
 let progress={};
-try{progress=JSON.parse(localStorage.getItem('3drez-progress')||'{}')||{};}catch(e){progress={};}
-const saveProgress=()=>{try{localStorage.setItem('3drez-progress',JSON.stringify(progress));}catch(e){}};
+try{progress=JSON.parse(localStorage.getItem('3drez-progress-v2')||'{}')||{};}catch(e){progress={};}
+const saveProgress=()=>{try{localStorage.setItem('3drez-progress-v2',JSON.stringify(progress));}catch(e){}};
 
 const $=id=>document.getElementById(id);
 const PIECES={R:{name:'Torre',glyph:'♜'},B:{name:'Alfil',glyph:'♝'},N:{name:'Caballo',glyph:'♞'},Q:{name:'Reina',glyph:'♛'}};
@@ -625,7 +630,7 @@ function renderGrid(){
   });
 }
 const chips=$('chips');
-for(const p of ['R','B','N','Q']){
+for(const p of ['Q','R','B','N']){
   const b=document.createElement('button'); b.type='button'; b.className='chip'; b.dataset.p=p;
   b.innerHTML=`<span class="g">${PIECES[p].glyph}</span>${PIECES[p].name}`;
   b.onclick=()=>startFree(p); chips.appendChild(b);
@@ -678,17 +683,17 @@ function figNet(o={}){
 }
 const SLIDES=[
   {t:'Un tablero de seis caras',fig:()=>figNet({labels:true,label:'Cubo desplegado en cruz'}),
-   p:'<p>Cada cara del cubo es un tablero de 4×4: son 96 casillas en total. Acá lo ves <b>desplegado</b>: la cara del frente y sus cuatro vecinas. La cara de atrás queda oculta.</p><p>En el juego, arrastrá para girar el cubo y pellizcá para acercarte.</p>'},
+   p:'<p>Cada cara del cubo es un tablero de 4×4: son 96 casillas en total. Acá lo ves <b>desplegado</b>: la cara del frente y sus cuatro vecinas. La cara de atrás queda oculta.</p><p><b>Para ganar, tenés que comerte a todos los peones rojos.</b></p><p>En el juego, arrastrá para girar el cubo y pellizcá para acercarte.</p>'},
   {t:'Capturá a todos los rivales',fig:()=>figNet({piece:'R',from:'-1,-1,4',targets:['-1,4,1','3,-3,4'],rocks:['1,-1,4']}),
    p:'<p>Tu pieza es la <b>dorada</b>. Comé todos los <b>peones rojos</b> para pasar el nivel. Las <b>rocas</b> bloquean el camino y no se pueden ocupar.</p><p>Cada nivel tiene un mínimo de jugadas posible. Si lo igualás, ganás tres estrellas.</p>'},
-  {t:'Torre: los bordes no son el final',fig:()=>figNet({piece:'R',from:'1,-1,4'}),
-   p:'<p>La torre va en línea recta. Cuando sale por un borde, <b>sigue en la cara vecina</b>, como si el tablero estuviera doblado.</p><p>Si no hay nada en el camino, puede dar la vuelta completa al cubo.</p>'},
+  {t:'Reina: la más fácil',fig:()=>figNet({piece:'Q',from:'1,1,4'}),
+   p:'<p>La reina avanza todas las casillas que quiera, en línea recta o en diagonal. Cuando sale por un borde, <b>sigue en la cara vecina</b>, como si el tablero estuviera doblado.</p><p>Con tantas opciones, es la pieza ideal para empezar.</p>'},
+  {t:'Torre: solo en línea recta',fig:()=>figNet({piece:'R',from:'1,-1,4'}),
+   p:'<p>La torre va en línea recta y también cruza bordes. Si no hay nada en el camino, puede dar la vuelta completa al cubo.</p><p>Sin diagonales, hay que planear mejor el recorrido.</p>'},
   {t:'Alfil: diagonales que se cortan',fig:()=>figNet({piece:'B',from:'-1,1,4'}),
    p:'<p>El alfil va en diagonal y también cruza bordes. En las <b>esquinas del cubo</b>, donde se juntan tres caras, la diagonal se corta.</p><p>Por eso, en el desplegado, ninguna diagonal entra en los huecos de las puntas.</p>'},
-  {t:'Caballo: saltos en L',fig:()=>figNet({piece:'N',from:'-3,3,4'}),
+  {t:'Caballo: el más difícil',fig:()=>figNet({piece:'N',from:'-3,3,4'}),
    p:'<p>Salta dos casillas en una dirección y una al costado, por encima de cualquier pieza o roca. Puede caer en otra cara, pero <b>no puede saltar a través de una esquina</b> del cubo.</p><p>Cerca de las esquinas tiene 6 o 7 saltos en vez de 8.</p>'},
-  {t:'Reina: la más poderosa',fig:()=>figNet({piece:'Q',from:'1,1,4'}),
-   p:'<p>La reina combina la torre y el alfil: líneas rectas y diagonales, con las mismas reglas en los bordes y las esquinas.</p><p>Sus niveles traen más rivales y más rocas.</p>'},
   {t:'Pistas en el tablero',fig:()=>figNet({piece:'R',from:'-1,-1,4',targets:['3,-1,4'],hint:['1,3,4','-3,1,4']}),
    p:'<ul class="legend"><li><span class="sw go"></span>Marco verde que titila: podés mover ahí.</li><li><span class="sw cap"></span>Marco rojo: capturás a un rival.</li><li><span class="sw hint"></span>Casilla teñida de rojo: hay un rival en la cara opuesta, en la misma posición.</li><li>Centrar gira el cubo hacia tu pieza y Deshacer vuelve una jugada atrás.</li></ul>'},
 ];

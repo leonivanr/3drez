@@ -5,7 +5,8 @@ Ajedrez sobre las seis caras de un cubo. Cada cara es un tablero de 4×4 y las p
 ## Cómo se juega
 
 - Arrastrá para girar el cubo y pellizcá para acercarte.
-- Capturá todos los peones rojos con tu pieza dorada (torre, alfil, caballo o reina).
+- **Para ganar, comé a todos los peones rojos** con tu pieza dorada.
+- Los niveles van de la pieza más fácil a la más difícil: Reina → Torre → Alfil → Caballo.
 - Las rocas bloquean el camino.
 - Si resolvés el nivel en el mínimo de jugadas posible, ganás tres estrellas.
 
