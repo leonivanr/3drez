@@ -1,0 +1,763 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#161a30">
+<meta name="description" content="Ajedrez sobre las seis caras de un cubo: girá el cubo y capturá a los rivales con torre, alfil, caballo y reina.">
+<title>3drez</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rubik+Mono+One&family=Rubik:wght@400;500;700&display=swap">
+<style>
+html{-webkit-text-size-adjust:100%}
+body{margin:0;font-size:14px}
+[hidden]{display:none!important}
+
+/* Layout: juego a pantalla completa; HUD flotante arriba, barra de acciones abajo, hojas modales para niveles y victoria */
+:root{
+  --bg-deep:#161a30;
+  --bg-glow:#3a4175;
+  --ink:#f4ecd8;
+  --muted:#a7aecd;
+  --mint:#7fe3c6;
+  --coral:#ef6a55;
+  --gold:#f2c46d;
+  --panel:rgba(24,28,52,.82);
+  --line:rgba(244,236,216,.14);
+  --font-display:"Rubik Mono One","Arial Black",system-ui,sans-serif;
+  --font-body:"Rubik",system-ui,-apple-system,"Segoe UI",sans-serif;
+  color-scheme:dark;
+}
+html,body{height:100%}
+body{background:var(--bg-deep);color:var(--ink);font-family:var(--font-body);overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+#app{position:fixed;inset:0;background:radial-gradient(120% 80% at 50% 42%,var(--bg-glow) 0%,var(--bg-deep) 70%)}
+#c{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
+#c:active{cursor:grabbing}
+
+.hud{position:absolute;top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:flex-start;gap:12px;
+  padding-top:calc(env(safe-area-inset-top,0px) + 14px);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));pointer-events:none}
+.title{display:flex;flex-direction:column;gap:2px;min-width:0}
+.eyebrow{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:500}
+.title strong{font-family:var(--font-display);font-size:20px;font-weight:400;line-height:1.1;display:flex;align-items:center;gap:8px}
+.title strong .g{font-family:system-ui,sans-serif;font-size:24px;color:var(--gold)}
+.stats{display:flex;gap:6px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:6px 10px;display:flex;flex-direction:column;align-items:center;min-width:52px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.stat span{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.stat b{font-size:18px;font-weight:700;font-variant-numeric:tabular-nums}
+.stat.targets b{color:var(--coral)}
+
+.bottom{position:absolute;left:0;right:0;bottom:0;display:flex;flex-direction:column;gap:10px;align-items:center;
+  padding-bottom:calc(env(safe-area-inset-bottom,0px) + 14px);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));pointer-events:none}
+.chips{display:flex;gap:8px;pointer-events:auto}
+.chip{font:500 13px var(--font-body);color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:8px 14px;display:flex;align-items:center;gap:6px;cursor:pointer}
+.chip .g{font-size:18px;line-height:1;font-family:system-ui,sans-serif}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--bg-deep);border-color:var(--ink)}
+.bar{display:flex;gap:8px;width:100%;max-width:520px;pointer-events:auto}
+.btn{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:4px;background:var(--panel);border:1px solid var(--line);color:var(--ink);border-radius:14px;padding:10px 4px 8px;font:500 12px var(--font-body);cursor:pointer;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.btn svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.btn:disabled{opacity:.4}
+.btn:active,.chip:active{transform:scale(.97)}
+button:focus-visible{outline:2px solid var(--mint);outline-offset:2px}
+
+#toast{position:absolute;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top,0px) + 86px);width:min(340px,calc(100% - 32px));background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 14px;font-size:14px;line-height:1.45;text-align:center;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);transition:opacity .4s;pointer-events:none}
+#toast.off{opacity:0}
+#toast em{font-style:normal;color:var(--mint);font-weight:500}
+
+.sheet{position:absolute;inset:0;background:rgba(10,12,26,.66);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:calc(env(safe-area-inset-top,0px) + 16px) calc(env(safe-area-inset-bottom,0px) + 16px)}
+.card{background:#1d2140;border:1px solid var(--line);border-radius:22px;padding:22px 20px;width:100%;max-width:420px;max-height:100%;overflow:auto;display:flex;flex-direction:column;gap:16px}
+.card h2{font-family:var(--font-display);font-weight:400;font-size:22px;margin:0;text-wrap:balance}
+.card p{margin:0;color:var(--muted);line-height:1.5;font-size:14px}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.lv{aspect-ratio:1;max-width:100%;border-radius:14px;border:1px solid var(--line);background:#272c52;color:var(--ink);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer;font:700 15px var(--font-body);font-variant-numeric:tabular-nums}
+.lv .g{font-size:22px;line-height:1;font-family:system-ui,sans-serif;color:var(--gold);font-weight:400}
+.lv .st{font-size:10px;letter-spacing:1px;color:var(--gold);min-height:12px}
+.lv .st i{font-style:normal;color:rgba(242,196,109,.25)}
+.lv:disabled{opacity:.35;cursor:not-allowed}
+.lv.cur{border-color:var(--mint);box-shadow:0 0 0 1px var(--mint) inset}
+.row{display:flex;gap:8px}
+.cta{flex:1;border:0;border-radius:14px;padding:13px;font:700 15px var(--font-body);cursor:pointer;background:var(--mint);color:#13261f}
+.cta.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.bigstars{display:flex;gap:10px;justify-content:center;font-size:40px;line-height:1}
+.bigstars span{color:rgba(242,196,109,.2);transform:scale(.6);transition:transform .35s cubic-bezier(.3,1.6,.5,1),color .2s}
+.bigstars span.on{color:var(--gold);transform:scale(1)}
+.rule{font-size:12px;color:var(--muted);border-top:1px solid var(--line);padding-top:12px;line-height:1.5}
+:root{--tile-l:#f5f3ee;--tile-d:#17171b;--groove:#6b6e80;--hint-l:#f6b8ae;--hint-d:#8a3a33;--go:#2ee88f;--cap:#ff4d3a}
+
+/* Splash */
+#splash{position:absolute;inset:0;z-index:20;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:34px;text-align:center;
+  background:radial-gradient(120% 80% at 50% 38%,var(--bg-glow) 0%,var(--bg-deep) 72%);transition:opacity .45s ease;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:calc(env(safe-area-inset-top,0px) + 24px) calc(env(safe-area-inset-bottom,0px) + 24px)}
+#splash.gone{opacity:0;pointer-events:none}
+.scene3d{width:140px;height:140px;perspective:700px;margin-bottom:8px}
+.logo-cube{width:100%;height:100%;position:relative;transform-style:preserve-3d;animation:spin 11s linear infinite}
+.logo-cube .f{position:absolute;inset:0;display:grid;grid-template-columns:repeat(4,1fr);gap:3px;padding:3px;background:var(--groove);border-radius:4px}
+.logo-cube .f i{background:var(--tile-l);display:flex;align-items:center;justify-content:center;font:22px/1 system-ui,sans-serif;color:var(--gold);font-style:normal}
+.logo-cube .f i.d{background:var(--tile-d)}
+.f1{transform:translateZ(70px)}.f2{transform:rotateY(90deg) translateZ(70px)}.f3{transform:rotateY(180deg) translateZ(70px)}
+.f4{transform:rotateY(-90deg) translateZ(70px)}.f5{transform:rotateX(90deg) translateZ(70px)}.f6{transform:rotateX(-90deg) translateZ(70px)}
+@keyframes spin{from{transform:rotateX(-26deg) rotateY(0deg)}to{transform:rotateX(-26deg) rotateY(360deg)}}
+.brand{display:flex;flex-direction:column;gap:10px;align-items:center}
+.brand h1{font-family:var(--font-display);font-weight:400;font-size:clamp(40px,12vw,64px);letter-spacing:.06em;margin:0;line-height:1}
+.brand h1 span{color:var(--gold)}
+.brand p{margin:0;color:var(--muted);font-size:15px;max-width:30ch;text-wrap:balance}
+.splash-actions{display:flex;flex-direction:column;gap:10px;width:min(260px,100%)}
+
+/* Intro */
+#intro{z-index:30}
+#intro .card{gap:12px}
+.step{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:500}
+.fig{width:100%;max-width:250px;margin:0 auto;touch-action:pan-y}
+.fig svg{width:100%;height:auto;display:block}
+#sText{min-height:6.2em}
+#sText b{color:var(--ink);font-weight:500}
+.dots{display:flex;gap:6px;justify-content:center}
+.dots span{width:7px;height:7px;border-radius:50%;background:var(--line)}
+.dots span.on{background:var(--mint);width:20px;border-radius:4px}
+.nf{fill:var(--groove)}.nc{stroke:var(--gold);stroke-width:2}
+.tl{fill:var(--tile-l)}.td{fill:var(--tile-d)}.tl.th{fill:var(--hint-l)}.td.th{fill:var(--hint-d)}
+.mk{fill:rgba(46,232,143,.18);stroke:var(--go);stroke-width:2.2;animation:blink 1.2s ease-in-out infinite}
+.mk.cap{fill:rgba(255,77,58,.25);stroke:var(--cap)}
+@keyframes blink{50%{opacity:.3}}
+.pc{fill:var(--gold);stroke:#7a5a17;stroke-width:1}
+.tg{fill:var(--coral);stroke:#8c2a20;stroke-width:1}
+.rk{fill:#3a3f58;stroke:#8d92b0;stroke-width:1}
+.gl{font:13px system-ui,sans-serif;fill:#2a1f08;text-anchor:middle;dominant-baseline:central}
+.lab{font:600 8px var(--font-body);fill:var(--muted);text-anchor:middle;letter-spacing:.08em}
+.legend{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px;color:var(--muted);font-size:13px;line-height:1.4}
+.legend li{display:flex;gap:10px;align-items:center}
+.sw{flex:none;width:20px;height:20px;border-radius:3px;box-sizing:border-box}
+.sw.go{border:3px solid var(--go);background:rgba(46,232,143,.18)}
+.sw.cap{border:3px solid var(--cap);background:rgba(255,77,58,.25)}
+.sw.hint{background:var(--hint-l)}
+
+@media (prefers-reduced-motion:reduce){.bigstars span,#toast,#splash{transition:none}.logo-cube{animation:none;transform:rotateX(-26deg) rotateY(-35deg)}.mk{animation:none}}
+</style>
+</head>
+<body>
+<div id="app">
+  <canvas id="c" aria-label="Tablero en forma de cubo"></canvas>
+
+  <header class="hud">
+    <div class="title">
+      <span class="eyebrow" id="eyebrow">Nivel 1</span>
+      <strong><span class="g" id="glyph">♜</span><span id="pname">Torre</span></strong>
+    </div>
+    <div class="stats">
+      <div class="stat"><span>Jugadas</span><b id="mv">0</b></div>
+      <div class="stat" id="parBox"><span>Mínimo</span><b id="par">0</b></div>
+      <div class="stat targets" id="leftBox"><span>Rivales</span><b id="left">0</b></div>
+    </div>
+  </header>
+
+  <div id="toast" class="off"></div>
+
+  <div class="bottom">
+    <div class="chips" id="chips" hidden></div>
+    <nav class="bar">
+      <button class="btn" id="bUndo" type="button"><svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg>Deshacer</button>
+      <button class="btn" id="bReset" type="button"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>Reiniciar</button>
+      <button class="btn" id="bCenter" type="button"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>Centrar</button>
+      <button class="btn" id="bLevels" type="button"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Niveles</button>
+    </nav>
+  </div>
+
+  <div class="sheet" id="levels" hidden>
+    <div class="card">
+      <h2>Elegí un nivel</h2>
+      <p>Capturá todos los peones rivales. Si lo hacés en el mínimo de jugadas, ganás tres estrellas.</p>
+      <div class="grid" id="grid"></div>
+      <div class="row">
+        <button class="cta ghost" id="bFree" type="button">Modo libre</button>
+        <button class="cta ghost" id="bClose" type="button">Cerrar</button>
+      </div>
+      <button class="cta ghost" id="bHelp" type="button">Cómo se juega</button>
+      <div class="rule">Regla del cubo: al cruzar un borde, la pieza sigue en la cara vecina. Las diagonales se cortan en las esquinas, donde se juntan tres caras, y el caballo no puede saltar a través de una esquina. Una casilla teñida de rojo avisa que hay un rival en la cara opuesta, en la misma posición.</div>
+    </div>
+  </div>
+
+  <div id="splash">
+    <div class="scene3d" aria-hidden="true"><div class="logo-cube" id="logoCube">
+      <div class="f f1"></div><div class="f f2"></div><div class="f f3"></div><div class="f f4"></div><div class="f f5"></div><div class="f f6"></div>
+    </div></div>
+    <div class="brand">
+      <h1><span>3D</span>REZ</h1>
+      <p>Ajedrez sobre las seis caras de un cubo</p>
+    </div>
+    <div class="splash-actions">
+      <button class="cta" id="bPlay" type="button">Jugar</button>
+      <button class="cta ghost" id="bHow" type="button">Cómo se juega</button>
+    </div>
+  </div>
+
+  <div class="sheet" id="intro" hidden>
+    <div class="card" id="introCard">
+      <span class="step" id="sStep">Cómo se juega</span>
+      <div class="fig" id="sFig"></div>
+      <h2 id="sTitle"></h2>
+      <div id="sText"></div>
+      <div class="dots" id="sDots"></div>
+      <div class="row">
+        <button class="cta ghost" id="sPrev" type="button">Saltar</button>
+        <button class="cta" id="sNext" type="button">Siguiente</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="sheet" id="win" hidden>
+    <div class="card">
+      <h2 id="winTitle">¡Nivel superado!</h2>
+      <div class="bigstars" id="bigstars"><span>★</span><span>★</span><span>★</span></div>
+      <p id="winText"></p>
+      <div class="row">
+        <button class="cta ghost" id="bRetry" type="button">Repetir</button>
+        <button class="cta" id="bNext" type="button">Siguiente</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(() => {
+/* ================= Lógica del tablero ================= */
+const N1 = 3;                 // coordenada máxima de una casilla (coords impares -3..3, cara en ±4)
+const ODD = [-3,-1,1,3];
+const V = {
+  add:(a,b)=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]],
+  sc:(a,s)=>[a[0]*s,a[1]*s,a[2]*s],
+  neg:a=>[-a[0],-a[1],-a[2]],
+  dot:(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2],
+  cross:(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]],
+};
+const key = p => p.join(',');
+const CELL = {}; const KEYS = [];
+for (let ax=0; ax<3; ax++) for (const s of [1,-1]) {
+  const n=[0,0,0]; n[ax]=s;
+  const o=[0,1,2].filter(i=>i!==ax);
+  for (const a of ODD) for (const b of ODD) {
+    const p=[0,0,0]; p[ax]=4*s; p[o[0]]=a; p[o[1]]=b;
+    const k=key(p); CELL[k]={key:k,p,n}; KEYS.push(k);
+  }
+}
+function tangents(n){ const t=[]; for(let i=0;i<3;i++) if(n[i]===0){const e=[0,0,0];e[i]=1;t.push(e,V.neg(e));} return t; }
+
+// Paso ortogonal: si sale del borde, pasa a la cara vecina
+function step(s){
+  const {p,n,d}=s;
+  if (V.dot(p,d)===N1) return {p:V.add(V.add(p,d),V.neg(n)), n:d.slice(), d:V.neg(n)};
+  return {p:V.add(p,V.sc(d,2)), n, d};
+}
+// Paso diagonal: cruza un borde a la vez; en una esquina del cubo se corta
+function stepDiag(s){
+  const {p,n,a,b}=s;
+  const ca=V.dot(p,a)===N1, cb=V.dot(p,b)===N1;
+  if (ca&&cb) return null;
+  if (ca) return {p:V.add(V.add(V.add(p,a),V.neg(n)),V.sc(b,2)), n:a.slice(), a:V.neg(n), b};
+  if (cb) return {p:V.add(V.add(V.add(p,b),V.neg(n)),V.sc(a,2)), n:b.slice(), a, b:V.neg(n)};
+  return {p:V.add(p,V.sc(V.add(a,b),2)), n, a, b};
+}
+
+function getMoves(piece, from, rocks, targets){
+  const c=CELL[from], res=new Map();
+  const ray=(fn,st)=>{
+    const path=[], seen=new Set([from]);
+    for(let i=0;i<40;i++){
+      st=fn(st); if(!st) break;
+      const k=key(st.p);
+      if(seen.has(k)||rocks.has(k)) break;
+      seen.add(k); path.push(k);
+      const cap=targets.has(k);
+      if(!res.has(k)) res.set(k,{path:path.slice(),capture:cap});
+      if(cap) break;
+    }
+  };
+  if (piece==='R'||piece==='Q') for(const d of tangents(c.n)) ray(step,{p:c.p,n:c.n,d});
+  if (piece==='B'||piece==='Q'){
+    const t=tangents(c.n);
+    for(const a of [t[0],t[1]]) for(const b of [t[2],t[3]]) ray(stepDiag,{p:c.p,n:c.n,a,b});
+  }
+  if (piece==='N'){
+    for(const d of tangents(c.n)){
+      const v=V.cross(c.n,d);
+      for(const side of [v,V.neg(v)]){
+        const s1=step({p:c.p,n:c.n,d}), s2=step(s1), s3=step({p:s2.p,n:s2.n,d:side});
+        const t1=step({p:c.p,n:c.n,d:side}), t2=step({p:t1.p,n:t1.n,d}), t3=step(t2);
+        // La L tiene que poder desplegarse plana: los dos recorridos (2+1 y 1+2)
+        // deben llegar a la misma casilla. Si no coinciden, la L atraviesa una
+        // esquina del cubo y el salto no vale (igual que el corte del alfil).
+        const ks=[s1,s2,s3].map(x=>key(x.p)), dk=ks[2];
+        if(dk!==key(t3.p)) continue;
+        if(dk===from||rocks.has(dk)||res.has(dk)) continue;
+        res.set(dk,{path:ks,capture:targets.has(dk),jump:true});
+      }
+    }
+  }
+  return res;
+}
+
+// Resolución por búsqueda en anchura: cantidad mínima de jugadas para capturar todo
+function solve(piece,start,targets,rocks){
+  const idx=new Map(targets.map((k,i)=>[k,i])); const full=(1<<targets.length)-1;
+  let frontier=[[start,0]]; const seen=new Set([start+'|0']); let d=0;
+  while(frontier.length && d<40){
+    d++; const next=[];
+    for(const [k,m] of frontier){
+      const alive=new Set(targets.filter((t,i)=>!(m>>i&1)));
+      for(const [dk,mv] of getMoves(piece,k,rocks,alive)){
+        const nm=mv.capture? m|(1<<idx.get(dk)) : m;
+        if(nm===full) return d;
+        const s=dk+'|'+nm;
+        if(!seen.has(s)){seen.add(s);next.push([dk,nm]);}
+      }
+    }
+    frontier=next;
+  }
+  return -1;
+}
+
+const LEVELS=[
+  {piece:'R',k:3,r:0},{piece:'B',k:3,r:1},{piece:'N',k:3,r:0},{piece:'Q',k:4,r:3},
+  {piece:'R',k:4,r:5},{piece:'B',k:4,r:4},{piece:'N',k:4,r:3},{piece:'Q',k:5,r:7},
+  {piece:'N',k:5,r:5},{piece:'R',k:5,r:8},{piece:'B',k:5,r:6},{piece:'Q',k:6,r:9},
+];
+function mulberry(a){return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+const levelCache={};
+function genLevel(i){
+  if(levelCache[i]) return levelCache[i];
+  const L=LEVELS[i]; const minPar=L.k+(i>=3?1:0)+(i>=8?1:0);
+  let best=null;
+  for(let a=0;a<400;a++){
+    const rng=mulberry(9173+i*1301+a*7);
+    const pool=KEYS.slice();
+    for(let j=pool.length-1;j>0;j--){const r=Math.floor(rng()*(j+1));[pool[j],pool[r]]=[pool[r],pool[j]];}
+    const start=pool[0], targets=pool.slice(1,1+L.k), rocks=pool.slice(1+L.k,1+L.k+L.r);
+    const par=solve(L.piece,start,targets,new Set(rocks));
+    if(par<0) continue;
+    const lv={...L,start,targets,rocks,par};
+    if(par>=minPar && par<=L.k+4){best=lv;break;}
+    if(!best||par>best.par) best=lv;
+  }
+  return levelCache[i]=best;
+}
+
+/* ================= Escena 3D ================= */
+const canvas=document.getElementById('c');
+const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+const scene=new THREE.Scene();
+const camera=new THREE.PerspectiveCamera(36,1,0.1,100);
+scene.add(camera);
+scene.add(new THREE.HemisphereLight(0xe2e6ff,0x2b2546,0.85));
+const sun=new THREE.DirectionalLight(0xfff2dc,0.75); sun.position.set(5,8,6); scene.add(sun);
+const headLamp=new THREE.DirectionalLight(0xffffff,0.35); headLamp.position.set(0,0,1); camera.add(headLamp);
+
+const cube=new THREE.Group(); scene.add(cube);
+cube.add(new THREE.Mesh(new THREE.BoxGeometry(3.98,3.98,3.98),new THREE.MeshStandardMaterial({color:0x6b6e80,roughness:.7})));
+
+const Y=new THREE.Vector3(0,1,0), Z=new THREE.Vector3(0,0,1);
+const v3=a=>new THREE.Vector3(a[0],a[1],a[2]);
+const tileMats=[new THREE.MeshStandardMaterial({color:0xf5f3ee,roughness:.5}),new THREE.MeshStandardMaterial({color:0x17171b,roughness:.45})];
+const tileGeo=new THREE.BoxGeometry(.9,.9,.08);
+// Pista: casilla teñida de rojo cuando en la cara opuesta, en la misma posición, hay un rival
+const hintMats=[new THREE.MeshStandardMaterial({color:0xf6b8ae,roughness:.5}),new THREE.MeshStandardMaterial({color:0x8a3a33,roughness:.45})];
+const TILE={};
+const opposite=k=>{const c=CELL[k];return key(c.p.map((v,i)=>c.n[i]?-v:v));};
+const pickables=[];
+for(const k of KEYS){
+  const c=CELL[k];
+  const par=(((c.p[0]+c.p[1]+c.p[2])/2)%2+2)%2;
+  const m=new THREE.Mesh(tileGeo,tileMats[par]);
+  m.position.copy(v3(c.p).multiplyScalar(.5));
+  m.quaternion.setFromUnitVectors(Z,v3(c.n));
+  m.userData.key=k; m.userData.par=par; TILE[k]=m; cube.add(m); pickables.push(m);
+}
+
+const piecesG=new THREE.Group(); cube.add(piecesG);
+const markersG=new THREE.Group(); cube.add(markersG);
+
+const playerMat=new THREE.MeshStandardMaterial({color:0xe2b04f,roughness:.3,metalness:.25});
+const enemyMat=new THREE.MeshStandardMaterial({color:0xe4574a,roughness:.4});
+const rockMat=new THREE.MeshStandardMaterial({color:0x3a3f58,roughness:.9,flatShading:true});
+
+function lathe(pts,mat){return new THREE.Mesh(new THREE.LatheGeometry(pts.map(([x,y])=>new THREE.Vector2(x,y)),28),mat);}
+const BASE=[[0,0],[.32,0],[.33,.05],[.28,.09],[.24,.12]];
+function ball(r,y,mat,x=0,z=0){const m=new THREE.Mesh(new THREE.SphereGeometry(r,16,12),mat);m.position.set(x,y,z);return m;}
+function buildPiece(type,mat){
+  const g=new THREE.Group();
+  if(type==='R'){
+    g.add(lathe([...BASE,[.2,.14],[.17,.2],[.17,.5],[.22,.55],[.24,.62],[.24,.72],[.17,.72],[.17,.67],[0,.67]],mat));
+    for(let i=0;i<5;i++){const a=i/5*Math.PI*2;const b=new THREE.Mesh(new THREE.BoxGeometry(.09,.08,.07),mat);b.position.set(Math.cos(a)*.205,.75,Math.sin(a)*.205);b.rotation.y=-a;g.add(b);}
+  } else if(type==='B'){
+    g.add(lathe([...BASE,[.16,.16],[.12,.3],[.11,.45],[.18,.48],[.1,.52],[.15,.6],[.17,.68],[.14,.78],[.07,.86],[0,.88]],mat));
+    g.add(ball(.045,.92,mat));
+  } else if(type==='Q'){
+    g.add(lathe([...BASE,[.18,.16],[.13,.35],[.11,.55],[.2,.6],[.12,.64],[.15,.72],[.22,.84],[.16,.86],[0,.84]],mat));
+    for(let i=0;i<8;i++){const a=i/8*Math.PI*2;g.add(ball(.035,.87,mat,Math.cos(a)*.2,Math.sin(a)*.2));}
+    g.add(ball(.06,.93,mat));
+  } else if(type==='N'){
+    g.add(lathe([...BASE,[.2,.15],[0,.15]],mat));
+    const s=new THREE.Shape();
+    const P=[[-.17,.13],[.18,.13],[.12,.33],[.26,.5],[.27,.6],[.1,.72],[.04,.84],[-.04,.74],[-.15,.62],[-.2,.4]];
+    s.moveTo(...P[0]); P.slice(1).forEach(q=>s.lineTo(...q)); s.closePath();
+    const eg=new THREE.ExtrudeGeometry(s,{depth:.18,bevelEnabled:true,bevelThickness:.03,bevelSize:.03,bevelSegments:2});
+    eg.translate(0,0,-.09); g.add(new THREE.Mesh(eg,mat));
+  } else if(type==='P'){
+    g.add(lathe([[0,0],[.26,0],[.26,.05],[.2,.09],[.13,.13],[.09,.32],[.15,.35],[.08,.38],[0,.38]],mat));
+    g.add(ball(.12,.5,mat));
+  } else if(type==='X'){
+    const m=new THREE.Mesh(new THREE.DodecahedronGeometry(.34,0),mat);m.scale.set(1,.7,1);m.position.y=.2;g.add(m);
+  }
+  return g;
+}
+function placeOn(obj,k,lift=.04){
+  const c=CELL[k]; const n=v3(c.n);
+  obj.position.copy(v3(c.p).multiplyScalar(.5).addScaledVector(n,lift));
+  obj.quaternion.setFromUnitVectors(Y,n);
+}
+
+// Marco cuadrado que titila alrededor de cada casilla alcanzable
+function frameGeo(o,i){
+  const s=new THREE.Shape(); s.moveTo(-o,-o);s.lineTo(o,-o);s.lineTo(o,o);s.lineTo(-o,o);s.closePath();
+  const h=new THREE.Path(); h.moveTo(-i,-i);h.lineTo(-i,i);h.lineTo(i,i);h.lineTo(i,-i);h.closePath();
+  s.holes.push(h); return new THREE.ShapeGeometry(s);
+}
+const fGeo=frameGeo(.47,.36), fillGeo=new THREE.PlaneGeometry(.72,.72);
+const moveMat=new THREE.MeshBasicMaterial({color:0x2ee88f,transparent:true,opacity:1,side:THREE.DoubleSide,depthWrite:false});
+const moveFill=new THREE.MeshBasicMaterial({color:0x2ee88f,transparent:true,opacity:.25,side:THREE.DoubleSide,depthWrite:false});
+const capMat=new THREE.MeshBasicMaterial({color:0xff4d3a,transparent:true,opacity:1,side:THREE.DoubleSide,depthWrite:false});
+const capFill=new THREE.MeshBasicMaterial({color:0xff4d3a,transparent:true,opacity:.3,side:THREE.DoubleSide,depthWrite:false});
+function makeMarker(cap){
+  const g=new THREE.Group();
+  g.add(new THREE.Mesh(fGeo,cap?capMat:moveMat));
+  g.add(new THREE.Mesh(fillGeo,cap?capFill:moveFill));
+  return g;
+}
+
+/* ================= Estado del juego ================= */
+let G={mode:'level',li:0,level:null,piece:'R',pos:null,mask:0,moves:0,hist:[]};
+let player=null, targetMeshes=new Map(), current=new Map(), busy=false;
+let progress={};
+try{progress=JSON.parse(localStorage.getItem('3drez-progress')||'{}')||{};}catch(e){progress={};}
+const saveProgress=()=>{try{localStorage.setItem('3drez-progress',JSON.stringify(progress));}catch(e){}};
+
+const $=id=>document.getElementById(id);
+const PIECES={R:{name:'Torre',glyph:'♜'},B:{name:'Alfil',glyph:'♝'},N:{name:'Caballo',glyph:'♞'},Q:{name:'Reina',glyph:'♛'}};
+
+function alive(){return G.level.targets.filter((t,i)=>!(G.mask>>i&1));}
+
+function buildBoard(){
+  while(piecesG.children.length) piecesG.remove(piecesG.children[0]);
+  targetMeshes.clear();
+  for(const k of G.level.rocks){const r=buildPiece('X',rockMat);placeOn(r,k);r.rotation.y+=k.length;piecesG.add(r);}
+  G.level.targets.forEach((k,i)=>{
+    if(G.mask>>i&1) return;
+    const t=buildPiece('P',enemyMat); placeOn(t,k); t.userData.key=k; piecesG.add(t); targetMeshes.set(k,t); pickables.push(t);
+  });
+  player=buildPiece(G.piece,playerMat); placeOn(player,G.pos); player.userData.key=G.pos; piecesG.add(player);
+}
+function cleanPickables(){for(let i=pickables.length-1;i>=0;i--) if(!pickables[i].geometry) pickables.splice(i,1);}
+
+function refresh(){
+  current=getMoves(G.piece,G.pos,new Set(G.level.rocks),new Set(alive()));
+  while(markersG.children.length) markersG.remove(markersG.children[0]);
+  for(let i=pickables.length-1;i>=0;i--) if(pickables[i].userData.marker) pickables.splice(i,1);
+  if(!busy) for(const [k,mv] of current){
+    const c=CELL[k];
+    const m=makeMarker(mv.capture);
+    m.position.copy(v3(c.p).multiplyScalar(.5).addScaledVector(v3(c.n),.05));
+    m.quaternion.setFromUnitVectors(Z,v3(c.n));
+    m.userData.key=k; m.userData.marker=true; markersG.add(m); pickables.push(m);
+  }
+  for(const k of KEYS){const t=TILE[k];t.material=tileMats[t.userData.par];}
+  for(const k of alive()){const t=TILE[opposite(k)];t.material=hintMats[t.userData.par];}
+  const info=PIECES[G.piece];
+  $('glyph').textContent=info.glyph; $('pname').textContent=info.name;
+  $('mv').textContent=G.moves;
+  const free=G.mode==='free';
+  $('eyebrow').textContent=free?'Modo libre':`Nivel ${G.li+1} de ${LEVELS.length}`;
+  $('parBox').hidden=free; $('leftBox').hidden=free; $('chips').hidden=!free;
+  $('par').textContent=G.level.par; $('left').textContent=alive().length;
+  $('bUndo').disabled=!G.hist.length;
+  if(!free && !busy && current.size===0 && alive().length) showToast('La pieza quedó sin movimientos. Deshacé o reiniciá.');
+}
+
+function startLevel(i){
+  G={mode:'level',li:i,level:genLevel(i),piece:LEVELS[i].piece,pos:null,mask:0,moves:0,hist:[]};
+  G.pos=G.level.start;
+  for(let j=pickables.length-1;j>=0;j--) if(!pickables[j].isMesh||pickables[j].userData.marker||targetMeshesHas(pickables[j])) pickables.splice(j,1);
+  resetPickables(); buildBoard(); refresh(); centerOn(G.pos,500);
+}
+function startFree(piece){
+  const keep=G.mode==='free'&&G.pos?G.pos:'1,1,4';
+  G={mode:'free',li:G.li,level:{start:keep,targets:[],rocks:[],par:0},piece,pos:keep,mask:0,moves:0,hist:[]};
+  resetPickables(); buildBoard(); refresh();
+  document.querySelectorAll('.chip').forEach(b=>b.setAttribute('aria-pressed',b.dataset.p===piece));
+}
+function targetMeshesHas(m){return false;}
+function resetPickables(){pickables.length=0;cube.children.forEach(m=>{if(m.userData.key&&m.isMesh)pickables.push(m);});}
+function rebuild(){resetPickables();buildBoard();refresh();}
+
+/* ================= Animaciones ================= */
+const tweens=[];
+function tween(dur,fn,done){tweens.push({t0:performance.now(),dur,fn,done});}
+function animatePath(obj,keys,jump,done){
+  const pts=keys.map(k=>({p:v3(CELL[k].p).multiplyScalar(.5),n:v3(CELL[k].n)}));
+  const segs=pts.length-1, dur=jump?520:Math.min(110*segs+80,900);
+  const q=new THREE.Quaternion();
+  tween(dur,t=>{
+    const e=t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2;
+    const f=e*segs, i=Math.min(Math.floor(f),segs-1), u=f-i;
+    const a=pts[i], b=pts[i+1];
+    const n=a.n.clone().lerp(b.n,u).normalize();
+    const hop=jump?Math.sin(Math.PI*t)*.9:Math.sin(Math.PI*t)*.12;
+    obj.position.copy(a.p.clone().lerp(b.p,u)).addScaledVector(n,.04+hop);
+    q.setFromUnitVectors(Y,n); obj.quaternion.copy(q);
+  },done);
+}
+function centerOn(k,dur=450){
+  const nW=v3(CELL[k].n).applyQuaternion(cube.quaternion);
+  const target=new THREE.Vector3(.28,.42,1).normalize();
+  const qd=new THREE.Quaternion().setFromUnitVectors(nW,target);
+  const qa=cube.quaternion.clone(), qb=qd.multiply(qa.clone());
+  vel.x=vel.y=0;
+  if(dur<=0){cube.quaternion.copy(qb);return;}
+  tween(dur,t=>{const e=1-Math.pow(1-t,3);cube.quaternion.copy(qa.clone().slerp(qb,e));});
+}
+
+function doMove(dk){
+  const mv=current.get(dk); if(!mv||busy) return;
+  busy=true; G.hist.push({pos:G.pos,mask:G.mask}); refresh();
+  animatePath(player,[G.pos,...mv.path],!!mv.jump,()=>{
+    if(mv.capture){
+      const i=G.level.targets.indexOf(dk); G.mask|=1<<i;
+      const t=targetMeshes.get(dk); targetMeshes.delete(dk);
+      if(t){const s0=t.scale.clone();tween(260,u=>t.scale.copy(s0).multiplyScalar(1-u),()=>piecesG.remove(t));}
+      const pi=pickables.indexOf(t); if(pi>=0) pickables.splice(pi,1);
+    }
+    G.pos=dk; G.moves++; busy=false; refresh();
+    const nW=v3(CELL[dk].n).applyQuaternion(cube.quaternion);
+    if(nW.dot(camera.position.clone().normalize())<.3) centerOn(dk);
+    if(G.mode==='level'&&!alive().length) setTimeout(showWin,350);
+  });
+}
+
+function showWin(){
+  const par=G.level.par, m=G.moves;
+  const stars=m<=par?3:m<=par+2?2:1;
+  progress[G.li]=Math.max(progress[G.li]||0,stars); saveProgress();
+  $('winText').textContent=`Lo resolviste en ${m} ${m===1?'jugada':'jugadas'}. El mínimo posible es ${par}.`+(stars<3?' Probá de nuevo para conseguir las tres estrellas.':'');
+  $('winTitle').textContent=stars===3?'¡Perfecto!':'¡Nivel superado!';
+  $('bNext').hidden=G.li>=LEVELS.length-1;
+  const sp=[...$('bigstars').children]; sp.forEach(s=>s.classList.remove('on'));
+  $('win').hidden=false;
+  sp.forEach((s,i)=>setTimeout(()=>{if(i<stars)s.classList.add('on');},150+i*180));
+}
+
+/* ================= Entrada táctil ================= */
+const ray=new THREE.Raycaster(), ndc=new THREE.Vector2();
+const pointers=new Map(); let drag=null, pinch=null, vel={x:0,y:0}, zoom=1;
+const qTmp=new THREE.Quaternion(), AX=new THREE.Vector3(1,0,0), AY=new THREE.Vector3(0,1,0);
+function rotateBy(dx,dy){
+  const k=.0085;
+  cube.quaternion.premultiply(qTmp.setFromAxisAngle(AY,dx*k));
+  cube.quaternion.premultiply(qTmp.setFromAxisAngle(AX,dy*k));
+}
+canvas.addEventListener('pointerdown',e=>{
+  canvas.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(pointers.size===1){drag={x:e.clientX,y:e.clientY,sx:e.clientX,sy:e.clientY,t:performance.now(),moved:0};vel.x=vel.y=0;}
+  else if(pointers.size===2){const [a,b]=[...pointers.values()];pinch={d:Math.hypot(a.x-b.x,a.y-b.y),z:zoom};drag=null;}
+});
+canvas.addEventListener('pointermove',e=>{
+  if(!pointers.has(e.pointerId)) return;
+  pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(pinch&&pointers.size===2){const [a,b]=[...pointers.values()];zoom=Math.min(1.6,Math.max(.6,pinch.z*pinch.d/Math.max(20,Math.hypot(a.x-b.x,a.y-b.y))));resize();return;}
+  if(!drag) return;
+  const dx=e.clientX-drag.x, dy=e.clientY-drag.y;
+  drag.x=e.clientX; drag.y=e.clientY; drag.moved+=Math.abs(dx)+Math.abs(dy);
+  rotateBy(dx,dy); vel.x=dx; vel.y=dy;
+});
+function endPointer(e){
+  if(!pointers.has(e.pointerId)) return;
+  pointers.delete(e.pointerId);
+  if(pinch){if(pointers.size<2)pinch=null;drag=null;return;}
+  if(drag&&drag.moved<10&&performance.now()-drag.t<500){vel.x=vel.y=0;tap(e.clientX,e.clientY);}
+  drag=null;
+}
+canvas.addEventListener('pointerup',endPointer);
+canvas.addEventListener('pointercancel',endPointer);
+canvas.addEventListener('wheel',e=>{e.preventDefault();zoom=Math.min(1.6,Math.max(.6,zoom*(1+e.deltaY*.001)));resize();},{passive:false});
+
+function tap(x,y){
+  if(busy) return;
+  const r=canvas.getBoundingClientRect();
+  ndc.set((x-r.left)/r.width*2-1,-((y-r.top)/r.height)*2+1);
+  ray.setFromCamera(ndc,camera);
+  const hits=ray.intersectObjects([...markersG.children,...pickables,...piecesG.children],true);
+  for(const h of hits){
+    let o=h.object; while(o&&!o.userData.key) o=o.parent;
+    if(!o) continue;
+    const k=o.userData.key;
+    if(current.has(k)){hideToast();doMove(k);return;}
+    if(k===G.pos){showToast(`Los cuadros verdes muestran a dónde puede ir ${G.piece==='Q'?'la':'el'} ${PIECES[G.piece].name.toLowerCase()}. Los cuadros rojos son capturas.`);return;}
+    return;
+  }
+}
+
+/* ================= Interfaz ================= */
+let toastTimer;
+function showToast(html,ms=3800){const t=$('toast');t.innerHTML=html;t.classList.remove('off');clearTimeout(toastTimer);toastTimer=setTimeout(hideToast,ms);}
+function hideToast(){$('toast').classList.add('off');}
+
+function renderGrid(){
+  const grid=$('grid'); grid.innerHTML='';
+  LEVELS.forEach((L,i)=>{
+    const b=document.createElement('button'); b.type='button'; b.className='lv'+(G.mode==='level'&&G.li===i?' cur':'');
+    const st=progress[i]||0;
+    b.disabled=i>0&&!(progress[i-1]>0);
+    b.innerHTML=`<span class="g">${PIECES[L.piece].glyph}</span>${i+1}<span class="st">${'★'.repeat(st)}<i>${'★'.repeat(3-st)}</i></span>`;
+    b.setAttribute('aria-label',`Nivel ${i+1}, ${PIECES[L.piece].name}, ${st} estrellas`);
+    b.onclick=()=>{$('levels').hidden=true;startLevel(i);};
+    grid.appendChild(b);
+  });
+}
+const chips=$('chips');
+for(const p of ['R','B','N','Q']){
+  const b=document.createElement('button'); b.type='button'; b.className='chip'; b.dataset.p=p;
+  b.innerHTML=`<span class="g">${PIECES[p].glyph}</span>${PIECES[p].name}`;
+  b.onclick=()=>startFree(p); chips.appendChild(b);
+}
+$('bUndo').onclick=()=>{if(busy||!G.hist.length)return;const h=G.hist.pop();G.pos=h.pos;G.mask=h.mask;G.moves=Math.max(0,G.moves-1);rebuild();};
+$('bReset').onclick=()=>{if(busy)return;G.mode==='level'?startLevel(G.li):(G.pos='1,1,4',G.moves=0,G.hist=[],rebuild(),centerOn(G.pos));};
+$('bCenter').onclick=()=>centerOn(G.pos);
+$('bLevels').onclick=()=>{renderGrid();$('levels').hidden=false;};
+$('bClose').onclick=()=>{$('levels').hidden=true;};
+$('bFree').onclick=()=>{$('levels').hidden=true;G.mode='free';startFree(G.piece||'R');};
+$('bRetry').onclick=()=>{$('win').hidden=true;startLevel(G.li);};
+$('bNext').onclick=()=>{$('win').hidden=true;startLevel(Math.min(G.li+1,LEVELS.length-1));};
+
+/* ================= Splash e intro ================= */
+function buildSplashCube(){
+  document.querySelectorAll('#logoCube .f').forEach((f,fi)=>{
+    let h='';
+    for(let i=0;i<16;i++){const d=((i>>2)+i+fi)%2;h+=`<i class="${d?'d':''}">${fi===0&&i===5?'♞':fi===1&&i===10?'♛':fi===3&&i===6?'♜':''}</i>`;}
+    f.innerHTML=h;
+  });
+}
+// Posición en el cubo desplegado en cruz: cara del frente (z+) y sus cuatro vecinas
+function netPos(p){
+  const [x,y,z]=p;
+  if(z===4) return [(x+3)/2+4,(3-y)/2+4];
+  if(x===4) return [8+(3-z)/2,(3-y)/2+4];
+  if(x===-4) return [(z+3)/2,(3-y)/2+4];
+  if(y===4) return [(x+3)/2+4,(z+3)/2];
+  if(y===-4) return [(x+3)/2+4,8+(3-z)/2];
+  return null;
+}
+function figNet(o={}){
+  const S=20, rocks=o.rocks||[], targets=o.targets||[], hint=(o.hint||[]);
+  const mv=o.piece?getMoves(o.piece,o.from,new Set(rocks),new Set(targets)):new Map();
+  let s=`<svg viewBox="-4 -4 248 248" role="img" aria-label="${o.label||'Cubo desplegado'}">`;
+  for(const [c,r] of [[4,0],[0,4],[8,4],[4,8],[4,4]]) s+=`<rect x="${c*S-2}" y="${r*S-2}" width="${4*S+4}" height="${4*S+4}" rx="3" class="nf${c===4&&r===4?' nc':''}"/>`;
+  for(const k of KEYS){
+    const P=netPos(CELL[k].p); if(!P) continue;
+    const c=CELL[k].p, par=(((c[0]+c[1]+c[2])/2)%2+2)%2;
+    s+=`<rect x="${P[0]*S+1}" y="${P[1]*S+1}" width="${S-2}" height="${S-2}" class="${par?'td':'tl'}${hint.includes(k)?' th':''}"/>`;
+  }
+  for(const [k,m] of mv){const P=netPos(CELL[k].p); if(!P) continue;
+    s+=`<rect x="${P[0]*S+2.5}" y="${P[1]*S+2.5}" width="${S-5}" height="${S-5}" class="mk${m.capture?' cap':''}"/>`;}
+  const at=k=>{const P=netPos(CELL[k].p);return [P[0]*S+S/2,P[1]*S+S/2];};
+  for(const k of rocks){const [x,y]=at(k);s+=`<polygon class="rk" points="${[0,1,2,3,4,5].map(i=>{const a=i*Math.PI/3+Math.PI/6;return (x+Math.cos(a)*7).toFixed(1)+','+(y+Math.sin(a)*7).toFixed(1);}).join(' ')}"/>`;}
+  for(const k of targets){const [x,y]=at(k);s+=`<circle class="tg" cx="${x}" cy="${y}" r="6"/>`;}
+  if(o.piece){const [x,y]=at(o.from);s+=`<circle class="pc" cx="${x}" cy="${y}" r="8.5"/><text class="gl" x="${x}" y="${y+.5}">${PIECES[o.piece].glyph}</text>`;}
+  if(o.labels){s+=`<text class="lab" x="120" y="125" style="fill:var(--gold)">FRENTE</text><text class="lab" x="120" y="4" dy="-2">ARRIBA</text><text class="lab" x="40" y="74">IZQUIERDA</text><text class="lab" x="200" y="74">DERECHA</text><text class="lab" x="120" y="245">ABAJO</text>`;}
+  return s+'</svg>';
+}
+const SLIDES=[
+  {t:'Un tablero de seis caras',fig:()=>figNet({labels:true,label:'Cubo desplegado en cruz'}),
+   p:'<p>Cada cara del cubo es un tablero de 4×4: son 96 casillas en total. Acá lo ves <b>desplegado</b>: la cara del frente y sus cuatro vecinas. La cara de atrás queda oculta.</p><p>En el juego, arrastrá para girar el cubo y pellizcá para acercarte.</p>'},
+  {t:'Capturá a todos los rivales',fig:()=>figNet({piece:'R',from:'-1,-1,4',targets:['-1,4,1','3,-3,4'],rocks:['1,-1,4']}),
+   p:'<p>Tu pieza es la <b>dorada</b>. Comé todos los <b>peones rojos</b> para pasar el nivel. Las <b>rocas</b> bloquean el camino y no se pueden ocupar.</p><p>Cada nivel tiene un mínimo de jugadas posible. Si lo igualás, ganás tres estrellas.</p>'},
+  {t:'Torre: los bordes no son el final',fig:()=>figNet({piece:'R',from:'1,-1,4'}),
+   p:'<p>La torre va en línea recta. Cuando sale por un borde, <b>sigue en la cara vecina</b>, como si el tablero estuviera doblado.</p><p>Si no hay nada en el camino, puede dar la vuelta completa al cubo.</p>'},
+  {t:'Alfil: diagonales que se cortan',fig:()=>figNet({piece:'B',from:'-1,1,4'}),
+   p:'<p>El alfil va en diagonal y también cruza bordes. En las <b>esquinas del cubo</b>, donde se juntan tres caras, la diagonal se corta.</p><p>Por eso, en el desplegado, ninguna diagonal entra en los huecos de las puntas.</p>'},
+  {t:'Caballo: saltos en L',fig:()=>figNet({piece:'N',from:'-3,3,4'}),
+   p:'<p>Salta dos casillas en una dirección y una al costado, por encima de cualquier pieza o roca. Puede caer en otra cara, pero <b>no puede saltar a través de una esquina</b> del cubo.</p><p>Cerca de las esquinas tiene 6 o 7 saltos en vez de 8.</p>'},
+  {t:'Reina: la más poderosa',fig:()=>figNet({piece:'Q',from:'1,1,4'}),
+   p:'<p>La reina combina la torre y el alfil: líneas rectas y diagonales, con las mismas reglas en los bordes y las esquinas.</p><p>Sus niveles traen más rivales y más rocas.</p>'},
+  {t:'Pistas en el tablero',fig:()=>figNet({piece:'R',from:'-1,-1,4',targets:['3,-1,4'],hint:['1,3,4','-3,1,4']}),
+   p:'<ul class="legend"><li><span class="sw go"></span>Marco verde que titila: podés mover ahí.</li><li><span class="sw cap"></span>Marco rojo: capturás a un rival.</li><li><span class="sw hint"></span>Casilla teñida de rojo: hay un rival en la cara opuesta, en la misma posición.</li><li>Centrar gira el cubo hacia tu pieza y Deshacer vuelve una jugada atrás.</li></ul>'},
+];
+let slide=0, splashUp=true;
+function renderSlide(){
+  const S=SLIDES[slide], last=slide===SLIDES.length-1;
+  $('sFig').innerHTML=S.fig(); $('sTitle').textContent=S.t; $('sText').innerHTML=S.p;
+  $('sStep').textContent=`Cómo se juega · ${slide+1} de ${SLIDES.length}`;
+  $('sDots').innerHTML=SLIDES.map((_,i)=>`<span class="${i===slide?'on':''}"></span>`).join('');
+  $('sPrev').textContent=slide?'Anterior':'Saltar';
+  $('sNext').textContent=last?'¡A jugar!':'Siguiente';
+}
+function openIntro(){slide=0;renderSlide();$('intro').hidden=false;}
+function hideSplash(){
+  if(!splashUp) return; splashUp=false;
+  $('splash').classList.add('gone'); setTimeout(()=>{$('splash').hidden=true;},460);
+  showToast('Arrastrá para <em>girar el cubo</em>. Tocá un cuadro verde para mover.',5000);
+}
+function closeIntro(){$('intro').hidden=true;try{localStorage.setItem('3drez-intro','1');}catch(e){}hideSplash();}
+$('sPrev').onclick=()=>{if(slide){slide--;renderSlide();}else closeIntro();};
+$('sNext').onclick=()=>{if(slide<SLIDES.length-1){slide++;renderSlide();}else closeIntro();};
+let sw=null;
+$('introCard').addEventListener('pointerdown',e=>{sw={x:e.clientX,y:e.clientY};});
+$('introCard').addEventListener('pointerup',e=>{
+  if(!sw) return; const dx=e.clientX-sw.x, dy=e.clientY-sw.y; sw=null;
+  if(Math.abs(dx)>50&&Math.abs(dx)>Math.abs(dy)*1.5){
+    if(dx<0&&slide<SLIDES.length-1){slide++;renderSlide();}
+    else if(dx>0&&slide>0){slide--;renderSlide();}
+  }
+});
+$('bPlay').onclick=()=>{let seen=false;try{seen=localStorage.getItem('3drez-intro')==='1';}catch(e){}seen?hideSplash():openIntro();};
+$('bHow').onclick=openIntro;
+$('bHelp').onclick=()=>{$('levels').hidden=true;openIntro();};
+
+/* ================= Render ================= */
+function resize(){
+  const w=window.innerWidth,h=window.innerHeight;
+  renderer.setSize(w,h,false);
+  camera.aspect=w/h;
+  const R=3.9, vf=camera.fov*Math.PI/180, hf=2*Math.atan(Math.tan(vf/2)*camera.aspect);
+  const dist=R/Math.sin(Math.min(vf,hf)/2)*zoom;
+  camera.position.set(0,0,dist); camera.lookAt(0,0,0);
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize',resize);
+function loop(now){
+  for(let i=tweens.length-1;i>=0;i--){
+    const tw=tweens[i]; const t=Math.min(1,(now-tw.t0)/tw.dur);
+    tw.fn(t); if(t>=1){tweens.splice(i,1);tw.done&&tw.done();}
+  }
+  const pulse=.5+.5*Math.sin(now*.008);
+  moveMat.opacity=capMat.opacity=.35+.65*pulse;
+  moveFill.opacity=capFill.opacity=.08+.22*pulse;
+  if(!drag&&!pinch&&(Math.abs(vel.x)+Math.abs(vel.y)>.05)){rotateBy(vel.x,vel.y);vel.x*=.92;vel.y*=.92;}
+  renderer.render(scene,camera);
+  requestAnimationFrame(loop);
+}
+
+const boot=data=>{
+  resize();
+  cube.quaternion.setFromEuler(new THREE.Euler(.5,-.65,0));
+  const start=(data&&Number.isInteger(data.li))?data.li:(()=>{let i=0;while(i<LEVELS.length-1&&progress[i]>0)i++;return i;})();
+  startLevel(start); centerOn(G.pos,0);
+  requestAnimationFrame(loop);
+  buildSplashCube();
+};
+window.claude?.hot?.snapshot?.(()=>({li:G.li}));
+window.claude?.hot?.ready ? window.claude.hot.ready(boot) : boot(window.claude?.hot?.data ?? {});
+})();
+</script>
+</body>
+</html>
