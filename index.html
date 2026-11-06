@@ -155,6 +155,7 @@ button:focus-visible{outline:2px solid var(--mint);outline-offset:2px}
       <button class="btn" id="bUndo" type="button"><svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg>Deshacer</button>
       <button class="btn" id="bReset" type="button"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>Reiniciar</button>
       <button class="btn" id="bCenter" type="button"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>Centrar</button>
+      <button class="btn" id="bRules" type="button"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6"/><path d="M12 17h.01"/></svg>Cómo jugar</button>
       <button class="btn" id="bLevels" type="button"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Niveles</button>
     </nav>
   </div>
@@ -169,17 +170,13 @@ button:focus-visible{outline:2px solid var(--mint);outline-offset:2px}
         <button class="cta ghost" id="bClose" type="button">Cerrar</button>
       </div>
       <button class="cta ghost" id="bHelp" type="button">Cómo se juega</button>
+      <button class="cta ghost" id="bSound" type="button">Sonido: activado</button>
       <div class="rule">Regla del cubo: al cruzar un borde, la pieza sigue en la cara vecina. Las diagonales se cortan en las esquinas, donde se juntan tres caras, y el caballo no puede saltar a través de una esquina. Una casilla teñida de rojo avisa que hay un rival en la cara opuesta, en la misma posición.</div>
     </div>
   </div>
 
   <div id="splash">
     <canvas id="splashC" aria-hidden="true"></canvas>
-    <div class="brand">
-      <h1><span>3D</span>REZ</h1>
-      <p>Ajedrez sobre las seis caras de un cubo</p>
-      <p class="goal"><span class="pawn-dot"></span>Para ganar, comé a todos los peones rojos</p>
-    </div>
     <div class="splash-actions">
       <button class="cta" id="bPlay" type="button">Jugar</button>
       <button class="cta ghost" id="bHow" type="button">Cómo se juega</button>
@@ -202,7 +199,8 @@ button:focus-visible{outline:2px solid var(--mint);outline-offset:2px}
 
   <div class="sheet" id="win" hidden>
     <div class="card">
-      <h2 id="winTitle">¡Nivel superado!</h2>
+      <span class="step" id="winLevel">Nivel completado</span>
+      <h2 id="winTitle">¡Nivel completado!</h2>
       <div class="bigstars" id="bigstars"><span>★</span><span>★</span><span>★</span></div>
       <p id="winText"></p>
       <div class="row">
@@ -523,11 +521,69 @@ function centerOn(k,dur=450){
   tween(dur,t=>{const e=1-Math.pow(1-t,3);cube.quaternion.copy(qa.clone().slerp(qb,e));});
 }
 
+/* ================= Sonido (sintetizado, sin archivos) ================= */
+const SFX=(()=>{
+  let ctx=null, on=true, buf=null;
+  try{on=localStorage.getItem('3drez-sound')!=='0';}catch(e){}
+  const unlock=()=>{try{
+    if(!ctx){const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return;ctx=new AC();}
+    if(ctx.state==='suspended') ctx.resume();
+  }catch(e){}};
+  window.addEventListener('pointerdown',unlock,{capture:true});
+  const ready=()=>on&&ctx&&ctx.state==='running';
+  const noise=()=>{if(buf)return buf;buf=ctx.createBuffer(1,ctx.sampleRate*.6,ctx.sampleRate);const d=buf.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;return buf;};
+  const env=(g,t,a,peak,dec)=>{g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(peak,t+a);g.gain.exponentialRampToValueAtTime(.0001,t+a+dec);};
+  const src=(t,len)=>{const n=ctx.createBufferSource();n.buffer=noise();n.start(t);n.stop(t+len);return n;};
+  const osc=(type,t,len)=>{const o=ctx.createOscillator();o.type=type;o.start(t);o.stop(t+len);return o;};
+  return {
+    get on(){return on;},
+    set on(v){on=v;try{localStorage.setItem('3drez-sound',v?'1':'0');}catch(e){}},
+    // Roce suave de la pieza sobre el tablero
+    slide(dur=.25){
+      if(!ready())return; const t=ctx.currentTime;
+      const f=ctx.createBiquadFilter();f.type='bandpass';f.frequency.value=950;f.Q.value=.9;
+      const g=ctx.createGain();g.gain.setValueAtTime(.0001,t);g.gain.linearRampToValueAtTime(.05,t+.05);g.gain.linearRampToValueAtTime(.0001,t+dur);
+      src(t,dur+.05).connect(f).connect(g).connect(ctx.destination);
+    },
+    // Golpe de madera al apoyar la pieza
+    land(){
+      if(!ready())return; const t=ctx.currentTime;
+      const f=ctx.createBiquadFilter();f.type='bandpass';f.frequency.value=2100+Math.random()*500;f.Q.value=3;
+      const g=ctx.createGain();env(g,t,.002,.55,.06);
+      src(t,.1).connect(f).connect(g).connect(ctx.destination);
+      const o=osc('sine',t,.14);o.frequency.setValueAtTime(260,t);o.frequency.exponentialRampToValueAtTime(115,t+.09);
+      const g2=ctx.createGain();env(g2,t,.002,.5,.1);o.connect(g2).connect(ctx.destination);
+    },
+    // El peón desaparece: soplido que se apaga y un tono que cae
+    poof(){
+      if(!ready())return; const t=ctx.currentTime;
+      const f=ctx.createBiquadFilter();f.type='lowpass';f.Q.value=4;f.frequency.setValueAtTime(5200,t);f.frequency.exponentialRampToValueAtTime(240,t+.42);
+      const g=ctx.createGain();env(g,t,.012,.32,.42);
+      src(t,.5).connect(f).connect(g).connect(ctx.destination);
+      const o=osc('triangle',t,.42);o.frequency.setValueAtTime(1150,t);o.frequency.exponentialRampToValueAtTime(150,t+.34);
+      const g2=ctx.createGain();env(g2,t,.006,.16,.34);o.connect(g2).connect(ctx.destination);
+    },
+    // Fanfarria corta al terminar el nivel
+    win(){
+      if(!ready())return; const t=ctx.currentTime+.05;
+      [[523.25,0],[659.25,.12],[783.99,.24],[1046.5,.36],[1318.5,.52]].forEach(([fq,d],i)=>{
+        for(const [type,mul,vol] of [['triangle',1,.2],['sine',2,.05]]){
+          const o=osc(type,t+d,1.6);o.frequency.value=fq*mul;
+          const g=ctx.createGain();env(g,t+d,.01,vol,i===4?1.3:.45);o.connect(g).connect(ctx.destination);
+        }
+      });
+    }
+  };
+})();
+
 function doMove(dk){
   const mv=current.get(dk); if(!mv||busy) return;
   busy=true; G.hist.push({pos:G.pos,mask:G.mask}); refresh();
+  if(!mv.jump) SFX.slide(Math.min(110*mv.path.length+80,900)/1000);
   animatePath(player,[G.pos,...mv.path],!!mv.jump,()=>{
+    SFX.land();
     if(mv.capture){
+      SFX.poof();
       const i=G.level.targets.indexOf(dk); G.mask|=1<<i;
       const t=targetMeshes.get(dk); targetMeshes.delete(dk);
       if(t){const s0=t.scale.clone();tween(260,u=>t.scale.copy(s0).multiplyScalar(1-u),()=>piecesG.remove(t));}
@@ -545,7 +601,10 @@ function showWin(){
   const stars=m<=par?3:m<=par+2?2:1;
   progress[G.li]=Math.max(progress[G.li]||0,stars); saveProgress();
   $('winText').textContent=`Lo resolviste en ${m} ${m===1?'jugada':'jugadas'}. El mínimo posible es ${par}.`+(stars<3?' Probá de nuevo para conseguir las tres estrellas.':'');
-  $('winTitle').textContent=stars===3?'¡Perfecto!':'¡Nivel superado!';
+  const n=G.li+1;
+  $('winLevel').textContent=`Nivel ${n} de ${LEVELS.length} · ${PIECES[G.piece].name}`;
+  $('winTitle').textContent=stars===3?`¡Nivel ${n} perfecto!`:`¡Nivel ${n} completado!`;
+  SFX.win();
   $('bNext').hidden=G.li>=LEVELS.length-1;
   const sp=[...$('bigstars').children]; sp.forEach(s=>s.classList.remove('on'));
   $('win').hidden=false;
@@ -640,7 +699,7 @@ $('bNext').onclick=()=>{$('win').hidden=true;startLevel(Math.min(G.li+1,LEVELS.l
 function startSplash(){
   const cv=$('splashC');
   const r=new THREE.WebGLRenderer({canvas:cv,antialias:true,alpha:true});
-  r.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+  r.setPixelRatio(Math.min(window.devicePixelRatio||1,1.5));
   const sc=new THREE.Scene(), cam=new THREE.PerspectiveCamera(36,1,.1,50);
   cam.position.set(0,5.6,10.5); cam.lookAt(0,-.15,0);
   sc.add(new THREE.HemisphereLight(0xe2e6ff,0x2b2546,.85));
@@ -710,7 +769,7 @@ function startSplash(){
   // Piezas
   const mk=(type,mat,k)=>{const o=buildPiece(type,mat);g.add(o);placeOn(o,k);return {o,k,dest:null,moving:false,wait:Math.random()*.6,alive:true,q:type==='Q'};};
   const queen=mk('Q',playerMat,'1,4,1'); queen.o.scale.setScalar(1.08); queen.wait=1;
-  const pawns=['-3,4,-3','3,4,-3','3,1,4','-4,1,1','-1,3,4'].map(k=>mk('P',enemyMat,k));
+  const pawns=['3,1,4'].map(k=>mk('P',enemyMat,k));
   const actors=[queen,...pawns];
   const cellOf=a=>a.dest||a.k;
   function go(a,keys,dur,hop){a.dest=keys[keys.length-1];a.R=route(keys);a.t0=performance.now();a.dur=dur;a.hop=hop;a.moving=true;a.prev=null;}
@@ -725,7 +784,7 @@ function startSplash(){
       if(score>bs){bs=score;best={k,d:s.d};}
     }
     if(!best){a.wait=.25;return;}
-    a.dir=best.d; go(a,[a.k,best.k],.32,.13);
+    a.dir=best.d; go(a,[a.k,best.k],.62,.16);
   }
   function queenStep(){
     const live=pawns.filter(p=>p.alive).map(cellOf);
@@ -738,12 +797,12 @@ function startSplash(){
       if(score<bs){bs=score;best=[queen.k,...m.path];}
     }
     if(!best){queen.wait=.4;return;}
-    go(queen,best,.13*best.length+.12,.3);
+    go(queen,best,.28*best.length+.3,.35);
   }
   function capture(){
     for(const p of pawns){
       if(!p.alive||cellOf(p)!==queen.k) continue;
-      p.alive=false; p.moving=false; p.fade=1; p.respawn=1.1;
+      p.alive=false; p.moving=false; p.fade=1; p.respawn=1.4;
       puff(pos(queen.k),v3(CELL[queen.k].n),16,.3,.6);
     }
   }
@@ -774,7 +833,7 @@ function startSplash(){
       if(u>=1){
         a.moving=false; a.k=a.dest; a.dest=null;
         puff(s.p,s.n,a.q?9:3,.2,.35);
-        a.wait=a.q?.35+Math.random()*.35:.03+Math.random()*.22;
+        a.wait=a.q?.7+Math.random()*.6:.15+Math.random()*.3;
         if(a.q) capture();
       }
     } else {
@@ -790,7 +849,7 @@ function startSplash(){
   (function frame(now){
     if($('splash').hidden){window.removeEventListener('resize',size);r.dispose();return;}
     const dt=Math.min(.05,(now-last)/1000); last=now;
-    if(!reduce){g.rotation.y+=dt*.28; for(const a of actors) updActor(a,now,dt); updDust(dt);}
+    if(!reduce){g.rotation.y+=dt*.16; for(const a of actors) updActor(a,now,dt); updDust(dt);}
     r.render(sc,cam);
     requestAnimationFrame(frame);
   })(last);
@@ -870,6 +929,10 @@ $('introCard').addEventListener('pointerup',e=>{
 $('bPlay').onclick=()=>{let seen=false;try{seen=localStorage.getItem('3drez-intro')==='1';}catch(e){}seen?hideSplash():openIntro();};
 $('bHow').onclick=openIntro;
 $('bHelp').onclick=()=>{$('levels').hidden=true;openIntro();};
+$('bRules').onclick=openIntro;
+const soundLabel=()=>{$('bSound').textContent=`Sonido: ${SFX.on?'activado':'desactivado'}`;};
+soundLabel();
+$('bSound').onclick=()=>{SFX.on=!SFX.on;soundLabel();if(SFX.on)SFX.land();};
 
 /* ================= Render ================= */
 function resize(){
@@ -891,7 +954,7 @@ function loop(now){
   moveMat.opacity=capMat.opacity=.35+.65*pulse;
   moveFill.opacity=capFill.opacity=.08+.22*pulse;
   if(!drag&&!pinch&&(Math.abs(vel.x)+Math.abs(vel.y)>.05)){rotateBy(vel.x,vel.y);vel.x*=.92;vel.y*=.92;}
-  renderer.render(scene,camera);
+  if(!splashUp) renderer.render(scene,camera);   // mientras se ve la portada, solo se dibuja la portada
   requestAnimationFrame(loop);
 }
 
